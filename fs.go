@@ -19,7 +19,7 @@ func NewDriveFS(c *OAuth2) *DriveFS {
 	res := &DriveFS{
 		c: c,
 	}
-	res.root = &fsNode{fs: res, path: "/"}
+	res.root = &fsNode{fs: res, isRoot: true}
 	return res
 }
 

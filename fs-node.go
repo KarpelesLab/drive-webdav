@@ -14,36 +14,33 @@ import (
 )
 
 type fsNode struct {
-	fs   *DriveFS
-	path string
-	err  error // if any
+	fs  *DriveFS
+	err error // if any
 
 	// info from API
-	Id           string `json:"Drive_Item__"`
-	Blob         string `json:"Blob__"`
-	Type         string `json:"Type"`
-	NodeName     string `json:"Name"`
-	NodeSize     int64  `json:"Size"`
+	name         string
+	Id           string
+	Blob         string
+	Type         string
+	NodeSize     int64
 	LastModified time.Time
 
 	// in case of directory, "children" is populated
 	children map[string]*fsNode
 
 	loadOnce sync.Once
+	isRoot   bool
 }
 
-func makeNode(v interface{}, path, name string, fs *DriveFS) *fsNode {
-	r := &fsNode{
-		fs:   fs,
-		path: path,
-	}
+func makeNode(v interface{}, name string, fs *DriveFS) *fsNode {
+	r := &fsNode{fs: fs}
 
 	vM := v.(map[string]interface{})
 
 	r.Id = vM["Drive_Item__"].(string)
 	r.Blob, _ = vM["Blob__"].(string) // directories won't have a blob
 	r.Type = vM["Type"].(string)
-	r.NodeName = name
+	r.name = name
 	size, err := strconv.ParseInt(vM["Size"].(string), 0, 64)
 	log.Printf("parse size = %d %s %s", size, vM["Size"], err)
 	r.NodeSize = size
@@ -58,42 +55,45 @@ func (n *fsNode) load() {
 }
 
 func (n *fsNode) loadInternal() {
-	switch n.path {
-	case "/":
-		// special case: list of drives
-		n.Id = "Drive"
-		n.Type = "folder"
+	if n.isRoot {
+		n.initRoot()
+		return
+	}
+	log.Printf("unsupported access to node")
+	n.err = webdav.ErrNotImplemented
+}
 
-		res, err := n.fs.c.Rest("Drive", "GET", RestParam{"results_per_page": "1000"})
-		if err != nil {
-			n.err = err
-			return
-		}
+func (n *fsNode) initRoot() {
+	// special case: list of drives
+	n.Id = "Drive"
+	n.Type = "folder"
 
-		// list of drives
-		list := res.Data.([]interface{})
-		n.children = make(map[string]*fsNode)
+	res, err := n.fs.c.Rest("Drive", "GET", RestParam{"results_per_page": "1000"})
+	if err != nil {
+		n.err = err
+		return
+	}
 
-		// for each drive
-		for _, info := range list {
-			infoMap := info.(map[string]interface{})
-			name := infoMap["Name"].(string)
-			cnt := 1
-			for {
-				if _, found := n.children[name]; !found {
-					break
-				}
-				// need to vary name
-				cnt++
-				name = fmt.Sprintf("%s (%d)", infoMap["Name"].(string), cnt)
-				log.Printf("retry: %s", name)
+	// list of drives
+	list := res.Data.([]interface{})
+	n.children = make(map[string]*fsNode)
+
+	// for each drive
+	for _, info := range list {
+		infoMap := info.(map[string]interface{})
+		name := infoMap["Name"].(string)
+		cnt := 1
+		for {
+			if _, found := n.children[name]; !found {
+				break
 			}
-			node := makeNode(infoMap["Root"], "/"+name, name, n.fs)
-			n.children[name] = node
+			// need to vary name
+			cnt++
+			name = fmt.Sprintf("%s (%d)", infoMap["Name"].(string), cnt)
+			log.Printf("retry: %s", name)
 		}
-	default:
-		log.Printf("unsupported access to node")
-		n.err = webdav.ErrNotImplemented
+		node := makeNode(infoMap["Root"], name, n.fs)
+		n.children[name] = node
 	}
 }
 
@@ -102,6 +102,7 @@ func (n *fsNode) get(path string) (*fsNode, error) {
 	if path == "" || path == "/" {
 		return n, nil
 	}
+
 	if n.Type != "folder" {
 		// ... nope. can't browse inside a file
 		return nil, os.ErrInvalid
@@ -146,7 +147,7 @@ func (n *fsNode) ModTime() time.Time {
 }
 
 func (n *fsNode) Name() string {
-	return n.NodeName
+	return n.name
 }
 
 func (n *fsNode) Size() int64 {
