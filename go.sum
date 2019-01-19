@@ -1,0 +1,6 @@
+github.com/MagicalTux/goro v0.0.0-20181202174014-271b4c5c6b8d h1:RdWkTmRnD6GVz955cvNpP21+2cS39q/Xuu7Qpx8wey4=
+github.com/MagicalTux/goro v0.0.0-20181202174014-271b4c5c6b8d/go.mod h1:pRA+c/9a9qzUBoKmitX2UNGNNKDTAZF6J9Zl02ozv2c=
+github.com/TrisTech/goupd v0.1.2 h1:CUCyWwz1MbhBfFFBEsqQKigYbCkSfnqNtC2E9exDR2Q=
+github.com/TrisTech/goupd v0.1.2/go.mod h1:kxYe3iGXY+FvPUlbayaoPSpcNxGRYI2pNnqar3X9A6k=
+golang.org/x/net v0.0.0-20190110200230-915654e7eabc h1:Yx9JGxI1SBhVLFjpAkWMaO1TF+xyqtHLjZpvQboJGiM=
+golang.org/x/net v0.0.0-20190110200230-915654e7eabc/go.mod h1:mL1N/T3taQHkDXs73rZJwtUhF3w3ftmwwsq0BUmARs4=

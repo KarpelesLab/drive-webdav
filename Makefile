@@ -10,6 +10,7 @@ ifeq ($(DATE_TAG),)
 DATE_TAG:=$(shell date '+%Y%m%d%H%M%S')
 endif
 export DATE_TAG
+export GO111MODULE=on
 
 # do we have a defined target arch?
 ifneq ($(TARGET_ARCH),)
@@ -34,7 +35,7 @@ all: $(PROJECT_NAME)
 
 $(PROJECT_NAME): $(SOURCES)
 	$(GOPATH)/bin/goimports -w -l .
-	go build -v -gcflags="-N -l" -ldflags=all="-X github.com/tristech/goupd.PROJECT_NAME=$(PROJECT_NAME) -X github.com/tristech/goupd.MODE=DEV -X github.com/tristech/goupd.GIT_TAG=$(GIT_TAG) -X github.com/tristech/goupd.DATE_TAG=$(DATE_TAG) $(GOLDFLAGS)"
+	go build -v -gcflags="-N -l" -ldflags=all="-X github.com/TrisTech/goupd.PROJECT_NAME=$(PROJECT_NAME) -X github.com/TrisTech/goupd.MODE=DEV -X github.com/TrisTech/goupd.GIT_TAG=$(GIT_TAG) -X github.com/TrisTech/goupd.DATE_TAG=$(DATE_TAG) $(GOLDFLAGS)"
 
 clean:
 	go clean
@@ -97,7 +98,7 @@ dist/$(PROJECT_NAME)_$(GIT_TAG)/$(PROJECT_NAME).%: $(SOURCES)
 
 ifneq ($(TARGET_ARCH),)
 dist/$(PROJECT_NAME)_$(GIT_TAG)/build_$(PROJECT_NAME).$(TARGET_ARCH): $(SOURCES)
-	@GOOS="$(TARGET_GOOS)" GOARCH="$(TARGET_GOARCH)" go build -a -o "$@" -gcflags="-N -l -trimpath=$(shell pwd)" -ldflags=all="-s -w -X github.com/tristech/goupd.PROJECT_NAME=$(PROJECT_NAME) -X github.com/tristech/goupd.MODE=PROD -X github.com/tristech/goupd.GIT_TAG=$(GIT_TAG) -X github.com/tristech/goupd.DATE_TAG=$(DATE_TAG) $(GOLDFLAGS)"
+	@GOOS="$(TARGET_GOOS)" GOARCH="$(TARGET_GOARCH)" go build -a -o "$@" -gcflags="-N -l -trimpath=$(shell pwd)" -ldflags=all="-s -w -X github.com/TrisTech/goupd.PROJECT_NAME=$(PROJECT_NAME) -X github.com/TrisTech/goupd.MODE=PROD -X github.com/TrisTech/goupd.GIT_TAG=$(GIT_TAG) -X github.com/TrisTech/goupd.DATE_TAG=$(DATE_TAG) $(GOLDFLAGS)"
 endif
 
 update-make:
