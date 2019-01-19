@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"golang.org/x/net/webdav"
@@ -14,7 +15,7 @@ func NewDriveLoginFS(h *HttpServer, url string, name string) webdav.FileSystem {
 	if err != nil {
 		panic(err)
 	}
-	f.Write([]byte(url))
+	fmt.Fprintf(f, "[InternetShortcut]\nURL=%s\n", url)
 	f.Close()
 
 	return fs

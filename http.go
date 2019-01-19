@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -13,6 +14,13 @@ type HttpServer struct {
 	webdav.Handler
 	l *net.TCPListener
 }
+
+const (
+	authEP      = "https://hub.atonline.com/_special/rest/OAuth2:auth"
+	tokenEP     = "https://hub.atonline.com/_special/rest/OAuth2:token"
+	clientId    = "oaap-k4ch3u-kibn-bovo-cb6t-uf463ufi"
+	redirectUri = "http://localhost:50500/_login"
+)
 
 func NewHttpServer() (*HttpServer, error) {
 	l, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 50500})
@@ -37,8 +45,7 @@ func (h *HttpServer) String() string {
 }
 
 func (h *HttpServer) LoginUrl() string {
-	ret := "http://localhost:50500/_login"
-	loginUrl := "https://hub.atonline.com/_special/rest/OAuth2:auth?response_type=code&client_id=oaap-k4ch3u-kibn-bovo-cb6t-uf463ufi&redirect_uri=" + url.QueryEscape(ret) + "&scope=profile+Drive"
+	loginUrl := authEP + "?response_type=code&client_id=" + url.QueryEscape(clientId) + "&redirect_uri=" + url.QueryEscape(redirectUri) + "&scope=profile+Drive"
 	return loginUrl
 }
 
@@ -46,8 +53,16 @@ func (h *HttpServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// r.Method can be:
 	if r.Method == "GET" {
 		if r.URL.Path == "/_login" {
-			// TODO
-			log.Printf("todo login")
+			c, err := NewOAuth2(tokenEP, clientId, redirectUri, r.URL.Query().Get("code"))
+			if err != nil {
+				fmt.Fprintf(w, "Error authenticating: %s", err)
+				return
+			}
+			fs := NewDriveFS(c)
+			h.Handler.FileSystem = fs
+			h.Handler.LockSystem = webdav.NewMemLS() // TODO
+			fmt.Fprintf(w, "READY, you can now browse dav://%s", h)
+			return
 		}
 		r.Method = "PROPFIND"
 	}
