@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"net/url"
 
+	"github.com/AtOnline/drive-webdav/oauth2"
 	"golang.org/x/net/webdav"
 )
 
@@ -25,7 +27,16 @@ const (
 func NewHttpServer() (*HttpServer, error) {
 	l, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 50500})
 	res := &HttpServer{l: l}
-	res.Handler.FileSystem = NewDriveLoginFS(res, res.LoginUrl(), "Click here to Login")
+	o, err := oauth2.FromDisk(clientId, tokenEP)
+	if err != nil {
+		log.Printf("Failed to load token from disk: %s", err)
+	} else if o != nil {
+		res.Handler.FileSystem = NewDriveFS(o)
+		res.Handler.FileSystem.Stat(context.TODO(), "/")
+	} else {
+		res.Handler.FileSystem = NewDriveLoginFS(res, res.LoginUrl(), "Click here to Login")
+		log.Printf("login url: %s", res.LoginUrl())
+	}
 	res.Handler.LockSystem = webdav.NewMemLS()
 	res.Handler.Logger = func(r *http.Request, err error) {
 		if err != nil {
@@ -52,7 +63,7 @@ func (h *HttpServer) LoginUrl() string {
 func (h *HttpServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
 		if r.URL.Path == "/_login" {
-			c, err := NewOAuth2(tokenEP, clientId, redirectUri, r.URL.Query().Get("code"))
+			c, err := oauth2.NewOAuth2(tokenEP, clientId, redirectUri, r.URL.Query().Get("code"))
 			if err != nil {
 				fmt.Fprintf(w, "Error authenticating: %s", err)
 				return

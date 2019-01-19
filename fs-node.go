@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/AtOnline/drive-webdav/oauth2"
 	"golang.org/x/net/webdav"
 )
 
@@ -32,10 +33,11 @@ type fsNode struct {
 
 	loadOnce sync.Once
 	driveId  string
+	parent   *fsNode
 	isRoot   bool
 }
 
-func makeNode(v interface{}, name, driveId string, fs *DriveFS) *fsNode {
+func makeNode(v interface{}, name string, parent *fsNode, fs *DriveFS) *fsNode {
 	r := &fsNode{fs: fs}
 
 	vM := v.(map[string]interface{})
@@ -48,7 +50,8 @@ func makeNode(v interface{}, name, driveId string, fs *DriveFS) *fsNode {
 	}
 	r.name = name
 	r.LastModified = parseTime(vM["Last_Modified"])
-	r.driveId = driveId
+	r.parent = parent
+	r.driveId = parent.driveId
 
 	// size is returned as string
 	size, _ := strconv.ParseInt(vM["Size"].(string), 0, 64)
@@ -71,7 +74,7 @@ func (n *fsNode) loadInternal() {
 	switch n.Type {
 	case "folder":
 		// need to grab children
-		res, err := n.fs.c.Rest("Drive/"+url.PathEscape(n.driveId)+"/Item", "GET", RestParam{"Parent_Drive_Item__": n.Id, "results_per_page": "1000"})
+		res, err := n.fs.c.Rest("Drive/"+url.PathEscape(n.driveId)+"/Item", "GET", oauth2.RestParam{"Parent_Drive_Item__": n.Id, "results_per_page": "1000"})
 		if err != nil {
 			log.Printf("folder list failed: %s", err)
 			n.err = err
@@ -98,7 +101,7 @@ func (n *fsNode) loadInternal() {
 				name = fmt.Sprintf("%s (%d)", infoMap["Name"].(string), cnt)
 				log.Printf("retry: %s", name)
 			}
-			node := makeNode(infoMap, name, n.driveId, n.fs)
+			node := makeNode(infoMap, name, n, n.fs)
 			if node != nil {
 				n.children[name] = node
 			}
@@ -116,8 +119,9 @@ func (n *fsNode) initRoot() {
 	n.Id = "Drive"
 	n.Type = "folder"
 
-	res, err := n.fs.c.Rest("Drive", "GET", RestParam{"results_per_page": "1000"})
+	res, err := n.fs.c.Rest("Drive", "GET", oauth2.RestParam{"results_per_page": "1000"})
 	if err != nil {
+		log.Printf("Failed to get drives list: %s", err)
 		n.err = err
 		return
 	}
@@ -141,7 +145,8 @@ func (n *fsNode) initRoot() {
 			name = fmt.Sprintf("%s (%d)", infoMap["Name"].(string), cnt)
 			log.Printf("retry: %s", name)
 		}
-		node := makeNode(infoMap["Root"], name, driveId, n.fs)
+		node := makeNode(infoMap["Root"], name, n, n.fs)
+		node.driveId = driveId
 		if node != nil {
 			n.children[name] = node
 		}
@@ -180,6 +185,23 @@ func (n *fsNode) get(path string) (*fsNode, error) {
 
 func (n *fsNode) IsDir() bool {
 	return n.Type == "folder"
+}
+
+func (n *fsNode) moveToTrash() error {
+	// let's proceed
+	if n.parent == nil || n.parent.isRoot {
+		// invalid
+		return os.ErrInvalid
+	}
+
+	_, err := n.fs.c.Rest("Drive/Item/"+url.PathEscape(n.Id), "DELETE", oauth2.RestParam{})
+	if err != nil {
+		return err
+	}
+
+	// remove from parent
+	delete(n.parent.children, n.name)
+	return nil
 }
 
 func (n *fsNode) Mode() os.FileMode {
@@ -229,6 +251,12 @@ func (n *fsNode) OpenFile(ctx context.Context, name string, flag int, perm os.Fi
 				return nil, err
 			}
 			return p.OpenFile(ctx, name[pos+1:], flag, perm)
+		}
+
+		// check flags
+		if flag&os.O_APPEND != 0 {
+			// cannot append with webdav
+			return nil, webdav.ErrNotImplemented
 		}
 
 		// TODO handle file creation

@@ -1,4 +1,4 @@
-package main
+package oauth2
 
 import (
 	"bytes"
@@ -10,9 +10,12 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
+	"github.com/AtOnline/drive-webdav/cfgpath"
 	"github.com/MagicalTux/goro/core/util"
 )
 
@@ -29,11 +32,12 @@ type OAuth2 struct {
 }
 
 type oauth2tokInfo struct {
-	Token        string `json:"access_token"`
-	ExpiresIn    int    `json:"expires_in"`
-	TokenType    string `json:"token_type"` // bearer
-	Scope        string `json:"scope"`
-	RefreshToken string `json:"refresh_token"`
+	Token        string    `json:"access_token"`
+	ExpiresIn    int       `json:"expires_in"`
+	ExpiresOn    time.Time `json:"expires_on"`
+	TokenType    string    `json:"token_type"` // bearer
+	Scope        string    `json:"scope"`
+	RefreshToken string    `json:"refresh_token"`
 }
 
 func NewOAuth2(endpoint, clientId, redirectUri, code string) (*OAuth2, error) {
@@ -58,6 +62,46 @@ func NewOAuth2(endpoint, clientId, redirectUri, code string) (*OAuth2, error) {
 	return res, res.storeToken(body)
 }
 
+func FromDisk(clientId, endpoint string) (*OAuth2, error) {
+	p := filepath.Join(cfgpath.GetConfigDir(), clientId+".json")
+	f, err := os.Open(p)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		} else {
+			return nil, err
+		}
+	}
+	defer f.Close()
+	// load file
+	data, err := ioutil.ReadAll(f)
+	if err != nil {
+		return nil, err
+	}
+
+	// parse
+	var t oauth2tokInfo
+	err = json.Unmarshal(data, &t)
+	if err != nil {
+		return nil, err
+	}
+
+	if time.Until(t.ExpiresOn) < 0 && t.RefreshToken == "" {
+		// cannot use expired token without a refresh token
+		return nil, nil
+	}
+
+	o := &OAuth2{
+		token:        t.Token,
+		refreshToken: t.RefreshToken,
+		clientId:     clientId,
+		refresh:      t.ExpiresOn,
+		endpoint:     endpoint,
+	}
+	o.Client.Transport = o
+	return o, o.checkTokenExpiration()
+}
+
 func (o *OAuth2) storeToken(token []byte) error {
 	var data oauth2tokInfo
 	err := json.Unmarshal(token, &data)
@@ -65,13 +109,49 @@ func (o *OAuth2) storeToken(token []byte) error {
 		return err
 	}
 
+	data.ExpiresOn = time.Now().Add(time.Duration(data.ExpiresIn) * time.Second)
+
 	// store data
 	o.token = data.Token
-	o.refresh = time.Now().Add(time.Duration(data.ExpiresIn) * time.Second)
+	o.refresh = data.ExpiresOn
 	if data.RefreshToken != "" {
 		o.refreshToken = data.RefreshToken
 	}
+
 	log.Printf("oauth2: stored token, expires on %s", o.refresh)
+
+	// also store on disk
+	err = cfgpath.EnsureDir(cfgpath.GetConfigDir())
+	if err != nil {
+		log.Printf("[oauth2] failed to store token to disk: %s", err)
+		return nil
+	}
+
+	// re-encode to json because we now have ExpireOn
+	token, err = json.Marshal(data)
+	if err != nil {
+		// probably shouldn't happen
+		log.Printf("[oauth2] failed to store token to disk: %s", err)
+		return nil
+	}
+
+	p := filepath.Join(cfgpath.GetConfigDir(), o.clientId+".json")
+	f, err := os.OpenFile(p+".new", os.O_WRONLY|os.O_CREATE, 0755)
+	if err != nil {
+		log.Printf("[oauth2] failed to store token to disk: %s", err)
+		return nil
+	}
+	_, err = f.Write(token)
+	if err != nil {
+		f.Close()
+		log.Printf("[oauth2] failed to store token to disk: %s", err)
+		return nil
+	}
+	f.Close()
+
+	// rename
+	os.Rename(p+".new", p)
+
 	return nil
 }
 

@@ -5,17 +5,18 @@ import (
 	"log"
 	"os"
 
+	"github.com/AtOnline/drive-webdav/oauth2"
 	"golang.org/x/net/webdav"
 )
 
 type DriveFS struct {
-	c *OAuth2
+	c *oauth2.OAuth2
 
 	// cache path → node
 	root *fsNode
 }
 
-func NewDriveFS(c *OAuth2) *DriveFS {
+func NewDriveFS(c *oauth2.OAuth2) *DriveFS {
 	res := &DriveFS{
 		c: c,
 	}
@@ -33,8 +34,11 @@ func (fs *DriveFS) OpenFile(ctx context.Context, name string, flag int, perm os.
 }
 
 func (fs *DriveFS) RemoveAll(ctx context.Context, name string) error {
-	log.Printf("RemoveAll(%s)", name)
-	return webdav.ErrNotImplemented
+	d, err := fs.root.get(name)
+	if err != nil {
+		return err
+	}
+	return d.moveToTrash()
 }
 
 func (fs *DriveFS) Rename(ctx context.Context, oldName, newName string) error {

@@ -39,7 +39,6 @@ func main() {
 	}
 
 	log.Printf("main: listening on %s", h)
-	log.Printf("login url: %s", h.LoginUrl())
 
 	go h.Serve()
 
