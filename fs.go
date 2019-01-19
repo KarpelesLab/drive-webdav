@@ -4,7 +4,6 @@ import (
 	"context"
 	"log"
 	"os"
-	"sync"
 
 	"golang.org/x/net/webdav"
 )
@@ -13,42 +12,15 @@ type DriveFS struct {
 	c *OAuth2
 
 	// cache path → node
-	nodes  map[string]*fsNode
-	nodesL sync.RWMutex
+	root *fsNode
 }
 
 func NewDriveFS(c *OAuth2) *DriveFS {
-	return &DriveFS{
-		c:     c,
-		nodes: make(map[string]*fsNode),
+	res := &DriveFS{
+		c: c,
 	}
-}
-
-func (fs *DriveFS) getPath(path string) (*fsNode, error) {
-	fs.nodesL.RLock()
-	d, ok := fs.nodes[path]
-	fs.nodesL.RUnlock()
-
-	if ok {
-		d.load()
-		return d, d.err
-	}
-
-	fs.nodesL.Lock()
-	d, ok = fs.nodes[path]
-	if ok {
-		fs.nodesL.Unlock()
-		d.load()
-		return d, d.err
-	}
-
-	d = &fsNode{fs: fs, path: path}
-	fs.nodes[path] = d
-	fs.nodesL.Unlock()
-
-	d.load()
-
-	return d, d.err
+	res.root = &fsNode{fs: res, path: "/"}
+	return res
 }
 
 func (fs *DriveFS) Mkdir(ctx context.Context, name string, perm os.FileMode) error {
@@ -58,7 +30,11 @@ func (fs *DriveFS) Mkdir(ctx context.Context, name string, perm os.FileMode) err
 
 func (fs *DriveFS) OpenFile(ctx context.Context, name string, flag int, perm os.FileMode) (webdav.File, error) {
 	log.Printf("OpenFile(%s, %d, %s)", name, flag, perm)
-	return nil, webdav.ErrNotImplemented
+	p, err := fs.root.get(name)
+	if err != nil {
+		return nil, err
+	}
+	return p.OpenFile(ctx, flag, perm)
 }
 
 func (fs *DriveFS) RemoveAll(ctx context.Context, name string) error {
@@ -72,5 +48,5 @@ func (fs *DriveFS) Rename(ctx context.Context, oldName, newName string) error {
 }
 
 func (fs *DriveFS) Stat(ctx context.Context, name string) (os.FileInfo, error) {
-	return fs.getPath(name)
+	return fs.root.get(name)
 }
