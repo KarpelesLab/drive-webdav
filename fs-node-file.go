@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 
@@ -123,5 +124,6 @@ func (f *fsNodeFile) Stat() (os.FileInfo, error) {
 }
 
 func (f *fsNodeFile) Write(d []byte) (int, error) {
+	log.Printf("Write len=%d pos=%d", len(d), f.pos)
 	return 0, webdav.ErrNotImplemented
 }

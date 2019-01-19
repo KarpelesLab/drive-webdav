@@ -219,7 +219,25 @@ func (s *fsNode) ETag(ctx context.Context) (string, error) {
 	return "\"" + s.Blob + "\"", nil
 }
 
-func (n *fsNode) OpenFile(ctx context.Context, flag int, perm os.FileMode) (webdav.File, error) {
+func (n *fsNode) OpenFile(ctx context.Context, name string, flag int, perm os.FileMode) (webdav.File, error) {
+	if name != "" {
+		name = strings.TrimLeft(name, "/")
+		pos := strings.IndexByte(name, '/')
+		if pos != -1 {
+			p, err := n.get(name[:pos])
+			if err != nil {
+				return nil, err
+			}
+			return p.OpenFile(ctx, name[pos+1:], flag, perm)
+		}
+
+		// TODO handle file creation
+		p, err := n.get(name)
+		if err != nil {
+			return nil, err
+		}
+		return p.OpenFile(ctx, "", flag, perm)
+	}
 	switch n.Type {
 	case "folder":
 		c := make([]os.FileInfo, len(n.children))
