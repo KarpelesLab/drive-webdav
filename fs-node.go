@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -22,29 +23,36 @@ type fsNode struct {
 	Id           string
 	Blob         string
 	Type         string
-	NodeSize     int64
+	url          string
+	size         int64
 	LastModified time.Time
 
 	// in case of directory, "children" is populated
 	children map[string]*fsNode
 
 	loadOnce sync.Once
+	driveId  string
 	isRoot   bool
 }
 
-func makeNode(v interface{}, name string, fs *DriveFS) *fsNode {
+func makeNode(v interface{}, name, driveId string, fs *DriveFS) *fsNode {
 	r := &fsNode{fs: fs}
 
 	vM := v.(map[string]interface{})
 
 	r.Id = vM["Drive_Item__"].(string)
-	r.Blob, _ = vM["Blob__"].(string) // directories won't have a blob
 	r.Type = vM["Type"].(string)
+	if r.Type == "file" {
+		r.Blob = vM["Blob__"].(string)      // directories/etc won't have a blob, ignore error
+		r.url = vM["Download_Url"].(string) // only for files
+	}
 	r.name = name
-	size, err := strconv.ParseInt(vM["Size"].(string), 0, 64)
-	log.Printf("parse size = %d %s %s", size, vM["Size"], err)
-	r.NodeSize = size
 	r.LastModified = parseTime(vM["Last_Modified"])
+	r.driveId = driveId
+
+	// size is returned as string
+	size, _ := strconv.ParseInt(vM["Size"].(string), 0, 64)
+	r.size = size
 
 	return r
 }
@@ -59,8 +67,48 @@ func (n *fsNode) loadInternal() {
 		n.initRoot()
 		return
 	}
-	log.Printf("unsupported access to node")
-	n.err = webdav.ErrNotImplemented
+
+	switch n.Type {
+	case "folder":
+		// need to grab children
+		res, err := n.fs.c.Rest("Drive/"+url.PathEscape(n.driveId)+"/Item", "GET", RestParam{"Parent_Drive_Item__": n.Id, "results_per_page": "1000"})
+		if err != nil {
+			log.Printf("folder list failed: %s", err)
+			n.err = err
+			return
+		}
+
+		// list of drive items
+		list := res.Data.([]interface{})
+		n.children = make(map[string]*fsNode)
+
+		log.Printf("found %d children", len(list))
+
+		// for each drive
+		for _, info := range list {
+			infoMap := info.(map[string]interface{})
+			name := infoMap["Name"].(string)
+			cnt := 1
+			for {
+				if _, found := n.children[name]; !found {
+					break
+				}
+				// need to vary name
+				cnt++
+				name = fmt.Sprintf("%s (%d)", infoMap["Name"].(string), cnt)
+				log.Printf("retry: %s", name)
+			}
+			node := makeNode(infoMap, name, n.driveId, n.fs)
+			if node != nil {
+				n.children[name] = node
+			}
+		}
+	case "file":
+		// nothing
+	default:
+		log.Printf("unsupported access to node")
+		n.err = webdav.ErrNotImplemented
+	}
 }
 
 func (n *fsNode) initRoot() {
@@ -81,6 +129,7 @@ func (n *fsNode) initRoot() {
 	// for each drive
 	for _, info := range list {
 		infoMap := info.(map[string]interface{})
+		driveId := infoMap["Drive__"].(string)
 		name := infoMap["Name"].(string)
 		cnt := 1
 		for {
@@ -92,8 +141,10 @@ func (n *fsNode) initRoot() {
 			name = fmt.Sprintf("%s (%d)", infoMap["Name"].(string), cnt)
 			log.Printf("retry: %s", name)
 		}
-		node := makeNode(infoMap["Root"], name, n.fs)
-		n.children[name] = node
+		node := makeNode(infoMap["Root"], name, driveId, n.fs)
+		if node != nil {
+			n.children[name] = node
+		}
 	}
 }
 
@@ -132,11 +183,14 @@ func (n *fsNode) IsDir() bool {
 }
 
 func (n *fsNode) Mode() os.FileMode {
+	// TODO check rights, do not return write right if only read access
 	switch n.Type {
 	case "file":
 		return 0755
 	case "folder":
 		return os.ModeDir | 0755
+	case "special":
+		return 0
 	default:
 		return 0
 	}
@@ -151,8 +205,7 @@ func (n *fsNode) Name() string {
 }
 
 func (n *fsNode) Size() int64 {
-	log.Printf("get size = %d", n.NodeSize)
-	return n.NodeSize
+	return n.size
 }
 
 func (s *fsNode) Sys() interface{} {
@@ -167,7 +220,8 @@ func (s *fsNode) ETag(ctx context.Context) (string, error) {
 }
 
 func (n *fsNode) OpenFile(ctx context.Context, flag int, perm os.FileMode) (webdav.File, error) {
-	if n.Type == "folder" {
+	switch n.Type {
+	case "folder":
 		c := make([]os.FileInfo, len(n.children))
 		pos := 0
 		for _, sub := range n.children {
@@ -175,6 +229,9 @@ func (n *fsNode) OpenFile(ctx context.Context, flag int, perm os.FileMode) (webd
 			pos++
 		}
 		return &fsNodeFolderIterator{self: n, children: c}, nil
+	case "file", "special":
+		return &fsNodeFile{self: n, flag: flag, perm: perm}, nil
+	default:
+		return nil, os.ErrInvalid
 	}
-	return nil, webdav.ErrNotImplemented
 }
