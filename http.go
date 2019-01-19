@@ -66,3 +66,7 @@ func (h *HttpServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	h.Handler.ServeHTTP(w, r)
 }
+
+func (h *HttpServer) Stop() {
+	h.l.Close()
+}
