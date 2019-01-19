@@ -50,7 +50,6 @@ func (h *HttpServer) LoginUrl() string {
 }
 
 func (h *HttpServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// r.Method can be:
 	if r.Method == "GET" {
 		if r.URL.Path == "/_login" {
 			c, err := NewOAuth2(tokenEP, clientId, redirectUri, r.URL.Query().Get("code"))
@@ -64,7 +63,6 @@ func (h *HttpServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, "READY, you can now browse dav://%s", h)
 			return
 		}
-		r.Method = "PROPFIND"
 	}
 	h.Handler.ServeHTTP(w, r)
 }
