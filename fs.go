@@ -43,8 +43,8 @@ func (fs *DriveFS) RemoveAll(ctx context.Context, name string) error {
 }
 
 func (fs *DriveFS) Rename(ctx context.Context, oldName, newName string) error {
-	log.Printf("Rename(%s → %s", oldName, newName)
-	return webdav.ErrNotImplemented
+	log.Printf("Rename(%s → %s)", oldName, newName)
+	return fs.root.Rename(ctx, oldName, newName)
 }
 
 func (fs *DriveFS) Stat(ctx context.Context, name string) (os.FileInfo, error) {

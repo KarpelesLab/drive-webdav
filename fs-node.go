@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,6 +26,7 @@ type fsNode struct {
 	Blob         string
 	Type         string
 	url          string
+	mime         string
 	size         int64
 	LastModified time.Time
 
@@ -37,16 +39,15 @@ type fsNode struct {
 	isRoot   bool
 }
 
-func makeNode(v interface{}, name string, parent *fsNode) *fsNode {
+func makeNode(vM map[string]interface{}, name string, parent *fsNode) *fsNode {
 	r := &fsNode{}
-
-	vM := v.(map[string]interface{})
 
 	r.Id = vM["Drive_Item__"].(string)
 	r.Type = vM["Type"].(string)
 	if r.Type == "file" {
 		r.Blob = vM["Blob__"].(string)      // directories/etc won't have a blob, ignore error
 		r.url = vM["Download_Url"].(string) // only for files
+		r.mime = vM["Mime"].(string)
 	}
 	r.name = name
 	r.LastModified = parseTime(vM["Last_Modified"])
@@ -236,6 +237,13 @@ func (s *fsNode) ETag(ctx context.Context) (string, error) {
 	return "\"" + s.Blob + "\"", nil
 }
 
+func (s *fsNode) ContentType(ctx context.Context) (string, error) {
+	if s.mime == "" {
+		return "", webdav.ErrNotImplemented
+	}
+	return s.mime, nil
+}
+
 func (n *fsNode) Mkdir(ctx context.Context, name string, perm os.FileMode) error {
 	name = strings.TrimLeft(name, "/")
 	name = strings.TrimRight(name, "/")
@@ -326,4 +334,60 @@ func (n *fsNode) overwrite() (map[string]interface{}, error) {
 	}
 	return res.Data.(map[string]interface{}), nil
 
+}
+
+func (n *fsNode) Rename(ctx context.Context, oldName, newName string) error {
+	if oldName != "" {
+		oldName = strings.TrimLeft(oldName, "/")
+		pos := strings.IndexByte(oldName, '/')
+		if pos != -1 {
+			p, err := n.get(oldName[:pos])
+			if err != nil {
+				return err
+			}
+			return p.Rename(ctx, oldName[pos+1:], newName)
+		}
+
+		p, err := n.get(oldName)
+		if err != nil {
+			return err
+		}
+		return p.Rename(ctx, "", newName)
+	}
+
+	// get target dir
+	tgt, err := n.fs.root.get(path.Dir(newName))
+	if err != nil {
+		return err
+	}
+	newName = path.Base(newName)
+	if tgt == n.parent {
+		// rename only
+		if newName == n.name {
+			// nothing?
+			return nil
+		}
+		res, err := n.fs.c.Rest("Drive/Item/"+url.PathEscape(n.Id), "PATCH", oauth2.RestParam{"Name": newName})
+		if err != nil {
+			return err
+		}
+		// update (ugly, FIXME)
+		delete(n.parent.children, n.name)
+		n.name = res.Data.(map[string]interface{})["Name"].(string)
+		n.parent.children[n.name] = n
+		return nil
+	}
+
+	// use move API
+	res, err := n.fs.c.Rest("Drive/Item/"+url.PathEscape(n.Id)+":moveTo", "POST", oauth2.RestParam{"target": tgt.Id, "rename": newName})
+	if err != nil {
+		return err
+	}
+
+	// update (ugly, FIXME)
+	delete(n.parent.children, n.name)
+	n.name = res.Data.(map[string]interface{})["Name"].(string)
+	n.parent = tgt
+	n.parent.children[n.name] = n
+	return nil
 }
