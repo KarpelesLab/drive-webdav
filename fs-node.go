@@ -262,10 +262,15 @@ func (n *fsNode) OpenFile(ctx context.Context, name string, flag int, perm os.Fi
 		// TODO handle file creation
 		p, err := n.get(name)
 		if err != nil {
+			if flag&os.O_CREATE != 0 {
+				// ok, let the user create a file
+				return &fsNodeNewFile{parent: n, name: name, flag: flag, perm: perm}, nil
+			}
 			return nil, err
 		}
 		return p.OpenFile(ctx, "", flag, perm)
 	}
+
 	switch n.Type {
 	case "folder":
 		c := make([]os.FileInfo, len(n.children))
