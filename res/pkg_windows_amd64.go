@@ -2,4 +2,4 @@
 
 package res
 
-import _ "git.atonline.com/tristantech/platform-fe/res/windows_386"
+import _ "github.com/AtOnline/drive-webdav/res/windows_amd64"

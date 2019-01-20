@@ -3,7 +3,7 @@
 <assemblyIdentity
     version="9.0.0.0"
     processorArchitecture="x86"
-    name="platform-fe.exe"
+    name="drive-webdav.exe"
     type="win32"
 />
 <description>Platform server</description>
