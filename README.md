@@ -9,4 +9,3 @@ AtOnline Drive has various APIs and provides OAuth2 login process. This program 
 * Handle more than 100 items in directories/etc (paging load)
 * Handle locks on server side
 * Expire data after some time and/or allow refresh
-* Send file chunks to S3 during upload to avoid using memory
