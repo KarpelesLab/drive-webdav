@@ -13,6 +13,7 @@ type fsNodeNewFile struct {
 	name   string
 	flag   int
 	perm   os.FileMode
+	url    string
 
 	pos int64
 }

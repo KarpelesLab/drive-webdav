@@ -65,6 +65,27 @@ func (n *fsNode) load() {
 	n.loadOnce.Do(n.loadInternal)
 }
 
+func (n *fsNode) addChild(infoMap map[string]interface{}, name string) *fsNode {
+	if name == "" {
+		name = infoMap["Name"].(string)
+	}
+	cnt := 1
+	for {
+		if _, found := n.children[name]; !found {
+			break
+		}
+		// need to vary name
+		cnt++
+		name = fmt.Sprintf("%s (%d)", infoMap["Name"].(string), cnt)
+		log.Printf("retry: %s", name)
+	}
+	node := makeNode(infoMap, name, n, n.fs)
+	if node != nil {
+		n.children[name] = node
+	}
+	return node
+}
+
 func (n *fsNode) loadInternal() {
 	if n.isRoot {
 		n.initRoot()
@@ -89,22 +110,7 @@ func (n *fsNode) loadInternal() {
 
 		// for each drive
 		for _, info := range list {
-			infoMap := info.(map[string]interface{})
-			name := infoMap["Name"].(string)
-			cnt := 1
-			for {
-				if _, found := n.children[name]; !found {
-					break
-				}
-				// need to vary name
-				cnt++
-				name = fmt.Sprintf("%s (%d)", infoMap["Name"].(string), cnt)
-				log.Printf("retry: %s", name)
-			}
-			node := makeNode(infoMap, name, n, n.fs)
-			if node != nil {
-				n.children[name] = node
-			}
+			n.addChild(info.(map[string]interface{}), "")
 		}
 	case "file":
 		// nothing
@@ -133,22 +139,9 @@ func (n *fsNode) initRoot() {
 	// for each drive
 	for _, info := range list {
 		infoMap := info.(map[string]interface{})
-		driveId := infoMap["Drive__"].(string)
-		name := infoMap["Name"].(string)
-		cnt := 1
-		for {
-			if _, found := n.children[name]; !found {
-				break
-			}
-			// need to vary name
-			cnt++
-			name = fmt.Sprintf("%s (%d)", infoMap["Name"].(string), cnt)
-			log.Printf("retry: %s", name)
-		}
-		node := makeNode(infoMap["Root"], name, n, n.fs)
-		node.driveId = driveId
+		node := n.addChild(infoMap["Root"].(map[string]interface{}), infoMap["Name"].(string))
 		if node != nil {
-			n.children[name] = node
+			node.driveId = infoMap["Drive__"].(string)
 		}
 	}
 }
@@ -264,7 +257,12 @@ func (n *fsNode) OpenFile(ctx context.Context, name string, flag int, perm os.Fi
 		if err != nil {
 			if flag&os.O_CREATE != 0 {
 				// ok, let the user create a file
-				return &fsNodeNewFile{parent: n, name: name, flag: flag, perm: perm}, nil
+				res, err := n.fs.c.Rest("Drive/Item/"+url.PathEscape(n.Id)+":upload", "POST", oauth2.RestParam{"filename": name})
+				if err != nil {
+					return nil, err
+				}
+				url := res.Data.(map[string]interface{})["PUT"].(string)
+				return &fsNodeNewFile{parent: n, name: name, url: url, flag: flag, perm: perm}, nil
 			}
 			return nil, err
 		}

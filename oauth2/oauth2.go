@@ -116,6 +116,9 @@ func (o *OAuth2) storeToken(token []byte) error {
 	o.refresh = data.ExpiresOn
 	if data.RefreshToken != "" {
 		o.refreshToken = data.RefreshToken
+	} else {
+		// for disk storage
+		data.RefreshToken = o.refreshToken
 	}
 
 	log.Printf("oauth2: stored token, expires on %s", o.refresh)
