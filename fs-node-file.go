@@ -27,7 +27,7 @@ func (f *fsNodeFile) Close() error {
 }
 
 func (f *fsNodeFile) Read(d []byte) (int, error) {
-	if f.flag&os.O_RDONLY == 0 && f.flag&os.O_RDWR != os.O_RDWR {
+	if f.flag&os.O_RDONLY != os.O_RDONLY && f.flag&os.O_RDWR != os.O_RDWR {
 		return 0, os.ErrInvalid
 	}
 

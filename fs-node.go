@@ -37,8 +37,8 @@ type fsNode struct {
 	isRoot   bool
 }
 
-func makeNode(v interface{}, name string, parent *fsNode, fs *DriveFS) *fsNode {
-	r := &fsNode{fs: fs}
+func makeNode(v interface{}, name string, parent *fsNode) *fsNode {
+	r := &fsNode{}
 
 	vM := v.(map[string]interface{})
 
@@ -52,6 +52,7 @@ func makeNode(v interface{}, name string, parent *fsNode, fs *DriveFS) *fsNode {
 	r.LastModified = parseTime(vM["Last_Modified"])
 	r.parent = parent
 	r.driveId = parent.driveId
+	r.fs = parent.fs
 
 	// size is returned as string
 	size, _ := strconv.ParseInt(vM["Size"].(string), 0, 64)
@@ -65,10 +66,11 @@ func (n *fsNode) load() {
 	n.loadOnce.Do(n.loadInternal)
 }
 
-func (n *fsNode) addChild(infoMap map[string]interface{}, name string) *fsNode {
-	if name == "" {
-		name = infoMap["Name"].(string)
+func (n *fsNode) addChild(infoMap map[string]interface{}, oname string) *fsNode {
+	if oname == "" {
+		oname = infoMap["Name"].(string)
 	}
+	name := oname
 	cnt := 1
 	for {
 		if _, found := n.children[name]; !found {
@@ -76,10 +78,10 @@ func (n *fsNode) addChild(infoMap map[string]interface{}, name string) *fsNode {
 		}
 		// need to vary name
 		cnt++
-		name = fmt.Sprintf("%s (%d)", infoMap["Name"].(string), cnt)
+		name = fmt.Sprintf("%s (%d)", oname, cnt)
 		log.Printf("retry: %s", name)
 	}
-	node := makeNode(infoMap, name, n, n.fs)
+	node := makeNode(infoMap, name, n)
 	if node != nil {
 		n.children[name] = node
 	}
@@ -234,6 +236,36 @@ func (s *fsNode) ETag(ctx context.Context) (string, error) {
 	return "\"" + s.Blob + "\"", nil
 }
 
+func (n *fsNode) Mkdir(ctx context.Context, name string, perm os.FileMode) error {
+	name = strings.TrimLeft(name, "/")
+	name = strings.TrimRight(name, "/")
+
+	pos := strings.IndexByte(name, '/')
+	if pos != -1 {
+		p, err := n.get(name[:pos])
+		if err != nil {
+			return err
+		}
+		return p.Mkdir(ctx, name[pos+1:], perm)
+	}
+
+	if n.isRoot {
+		return os.ErrInvalid
+	}
+
+	// create dir
+	res, err := n.fs.c.Rest("Drive/Item", "POST", oauth2.RestParam{"Name": name, "Parent_Drive_Item__": n.Id})
+	if err != nil {
+		// failed to create dir
+		return err
+	}
+
+	// new dir created, reg it
+	n.load()
+	n.addChild(res.Data.(map[string]interface{}), "")
+	return nil
+}
+
 func (n *fsNode) OpenFile(ctx context.Context, name string, flag int, perm os.FileMode) (webdav.File, error) {
 	if name != "" {
 		name = strings.TrimLeft(name, "/")
@@ -248,29 +280,32 @@ func (n *fsNode) OpenFile(ctx context.Context, name string, flag int, perm os.Fi
 
 		// check flags
 		if flag&os.O_APPEND != 0 {
+			log.Printf("no append")
 			// cannot append with webdav
 			return nil, webdav.ErrNotImplemented
 		}
 
 		// TODO handle file creation
 		p, err := n.get(name)
-		if err != nil {
-			if flag&os.O_CREATE != 0 {
-				// ok, let the user create a file
-				res, err := n.fs.c.Rest("Drive/Item/"+url.PathEscape(n.Id)+":upload", "POST", oauth2.RestParam{"filename": name})
-				if err != nil {
-					return nil, err
-				}
-				url := res.Data.(map[string]interface{})["PUT"].(string)
-				return &fsNodeNewFile{parent: n, name: name, url: url, flag: flag, perm: perm}, nil
-			}
-			return nil, err
+		if err == nil {
+			return p.OpenFile(ctx, "", flag, perm)
 		}
-		return p.OpenFile(ctx, "", flag, perm)
+
+		if flag&os.O_CREATE != 0 {
+			// ok, let the user create a file
+			res, err := n.fs.c.Rest("Drive/Item/"+url.PathEscape(n.Id)+":upload", "POST", oauth2.RestParam{"filename": name})
+			if err != nil {
+				return nil, err
+			}
+			url := res.Data.(map[string]interface{})["PUT"].(string)
+			return &fsNodeNewFile{parent: n, name: name, url: url, flag: flag, perm: perm}, nil
+		}
+		return nil, err
 	}
 
 	switch n.Type {
 	case "folder":
+		log.Printf("return iterator")
 		c := make([]os.FileInfo, len(n.children))
 		pos := 0
 		for _, sub := range n.children {

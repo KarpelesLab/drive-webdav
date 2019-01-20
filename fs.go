@@ -26,10 +26,11 @@ func NewDriveFS(c *oauth2.OAuth2) *DriveFS {
 
 func (fs *DriveFS) Mkdir(ctx context.Context, name string, perm os.FileMode) error {
 	log.Printf("Mkdir(%s)", name)
-	return webdav.ErrNotImplemented
+	return fs.root.Mkdir(ctx, name, perm)
 }
 
 func (fs *DriveFS) OpenFile(ctx context.Context, name string, flag int, perm os.FileMode) (webdav.File, error) {
+	//log.Printf("OpenFile(%s, %d)", name, flag)
 	return fs.root.OpenFile(ctx, name, flag, perm)
 }
 
