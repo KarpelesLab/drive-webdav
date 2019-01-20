@@ -7,3 +7,4 @@ AtOnline Drive has various APIs and provides OAuth2 login process. This program 
 ## TODO
 
 * Handle more than 100 items in directories/etc (paging load)
+* Handle locks on server side
