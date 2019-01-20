@@ -30,7 +30,7 @@ func (fs *DriveFS) Mkdir(ctx context.Context, name string, perm os.FileMode) err
 }
 
 func (fs *DriveFS) OpenFile(ctx context.Context, name string, flag int, perm os.FileMode) (webdav.File, error) {
-	//log.Printf("OpenFile(%s, %d)", name, flag)
+	log.Printf("OpenFile(%s, %d)", name, flag)
 	return fs.root.OpenFile(ctx, name, flag, perm)
 }
 

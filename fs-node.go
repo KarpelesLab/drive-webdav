@@ -297,8 +297,7 @@ func (n *fsNode) OpenFile(ctx context.Context, name string, flag int, perm os.Fi
 			if err != nil {
 				return nil, err
 			}
-			url := res.Data.(map[string]interface{})["PUT"].(string)
-			return &fsNodeNewFile{parent: n, name: name, url: url, flag: flag, perm: perm}, nil
+			return &fsNodeFile{parent: n, upload: res.Data.(map[string]interface{}), flag: flag, perm: perm}, nil
 		}
 		return nil, err
 	}
