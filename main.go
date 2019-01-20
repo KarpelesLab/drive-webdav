@@ -49,4 +49,5 @@ func main() {
 	}
 
 	h.Stop()
+	logbuf.Close()
 }

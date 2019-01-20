@@ -62,7 +62,8 @@ func (h *HttpServer) LoginUrl() string {
 
 func (h *HttpServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
-		if r.URL.Path == "/_login" {
+		switch r.URL.Path {
+		case "/_login":
 			c, err := oauth2.NewOAuth2(tokenEP, clientId, redirectUri, r.URL.Query().Get("code"))
 			if err != nil {
 				fmt.Fprintf(w, "Error authenticating: %s", err)
@@ -72,6 +73,9 @@ func (h *HttpServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.Handler.FileSystem = fs
 			h.Handler.LockSystem = webdav.NewMemLS() // TODO
 			fmt.Fprintf(w, "READY, you can now browse dav://%s", h)
+			return
+		case "/_log":
+			LogDmesg(w)
 			return
 		}
 	}

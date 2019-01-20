@@ -1,5 +1,7 @@
 github.com/MagicalTux/goro v0.0.0-20181202174014-271b4c5c6b8d h1:RdWkTmRnD6GVz955cvNpP21+2cS39q/Xuu7Qpx8wey4=
 github.com/MagicalTux/goro v0.0.0-20181202174014-271b4c5c6b8d/go.mod h1:pRA+c/9a9qzUBoKmitX2UNGNNKDTAZF6J9Zl02ozv2c=
+github.com/MagicalTux/ringbuf v0.1.2 h1:A0IxBORJhkJxloW6jgpFrOexGaKseZONm2UwSN4e7YM=
+github.com/MagicalTux/ringbuf v0.1.2/go.mod h1:6mvOLXY3VS1/+qQ7rM2xp0AIW7bk+A4QryivqLqd+AA=
 github.com/TrisTech/goupd v0.1.2 h1:CUCyWwz1MbhBfFFBEsqQKigYbCkSfnqNtC2E9exDR2Q=
 github.com/TrisTech/goupd v0.1.2/go.mod h1:kxYe3iGXY+FvPUlbayaoPSpcNxGRYI2pNnqar3X9A6k=
 golang.org/x/net v0.0.0-20190119204137-ed066c81e75e h1:MDa3fSUp6MdYHouVmCCNz/zaH2a6CRcxY3VhT/K3C5Q=
