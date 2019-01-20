@@ -36,6 +36,7 @@ func (f *fsNodeFile) Close() error {
 
 func (f *fsNodeFile) finalizeUpload() error {
 	if f.buf.Len() > 0 {
+		// TODO: need to be able to handle mutlipart upload to aws
 		if f.committed == 0 {
 			if f.upload == nil {
 				up, err := f.self.overwrite()
