@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -9,7 +8,6 @@ import (
 	"os"
 
 	"github.com/AtOnline/drive-webdav/oauth2"
-	"golang.org/x/net/webdav"
 )
 
 type fsNodeFile struct {
@@ -18,10 +16,8 @@ type fsNodeFile struct {
 	perm os.FileMode
 
 	// specific to uploads
-	parent    *fsNode
-	upload    map[string]interface{}
-	buf       bytes.Buffer
-	committed int64
+	parent *fsNode
+	upload *oauth2.Upload
 
 	pos int64
 
@@ -35,53 +31,20 @@ func (f *fsNodeFile) Close() error {
 }
 
 func (f *fsNodeFile) finalizeUpload() error {
-	if f.buf.Len() > 0 {
-		// TODO: need to be able to handle mutlipart upload to aws
-		if f.committed == 0 {
-			if f.upload == nil {
-				up, err := f.self.overwrite()
-				if err != nil {
-					return err
-				}
-				f.upload = up
-			}
-			var fs *DriveFS
-			if f.self == nil {
-				fs = f.parent.fs
-			} else {
-				fs = f.self.fs
-			}
-
-			// can just complete this in a single PUT
-			req, err := http.NewRequest("PUT", f.upload["PUT"].(string), bytes.NewReader(f.buf.Bytes()))
-			if err != nil {
-				return err
-			}
-			// perform post with default client
-			resp, err := http.DefaultClient.Do(req)
-			if err != nil {
-				return err
-			}
-			resp.Body.Close()
-
-			// notify upload completion
-			final, err := fs.c.Rest(f.upload["Complete"].(string), "POST", oauth2.RestParam{})
-			if err != nil {
-				return err
-			}
-
-			// complete
-			f.buf.Reset()
-			f.upload = nil
-
-			// add child if new upload
-			if f.self == nil {
-				f.parent.load()
-				f.self = f.parent.addChild(final.Data.(map[string]interface{}), "")
-			}
-			return nil
+	if f.upload != nil {
+		final, err := f.upload.Complete()
+		if err != nil {
+			return err
 		}
-		return webdav.ErrNotImplemented
+		f.upload = nil
+
+		// add child if new upload
+		if f.self == nil {
+			f.parent.load()
+			f.self = f.parent.addChild(final.Data.(map[string]interface{}), "")
+		} else {
+			f.self.store(final.Data.(map[string]interface{}))
+		}
 	}
 	return nil
 }
@@ -195,11 +158,19 @@ func (f *fsNodeFile) Stat() (os.FileInfo, error) {
 }
 
 func (f *fsNodeFile) Write(d []byte) (int, error) {
-	if f.pos != f.committed+int64(f.buf.Len()) {
+	if f.upload == nil {
+		// TODO check if write access
+		var err error
+		f.upload, err = f.self.overwrite()
+		if err != nil {
+			return 0, err
+		}
+	}
+	if f.pos != f.upload.Len() {
 		// can't write here
 		return 0, os.ErrInvalid
 	}
-	n, err := f.buf.Write(d)
+	n, err := f.upload.Write(d)
 	if n > 0 {
 		f.pos += int64(n)
 	}

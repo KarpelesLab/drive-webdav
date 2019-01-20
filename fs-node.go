@@ -39,9 +39,7 @@ type fsNode struct {
 	isRoot   bool
 }
 
-func makeNode(vM map[string]interface{}, name string, parent *fsNode) *fsNode {
-	r := &fsNode{}
-
+func (r *fsNode) store(vM map[string]interface{}) {
 	r.Id = vM["Drive_Item__"].(string)
 	r.Type = vM["Type"].(string)
 	if r.Type == "file" {
@@ -49,15 +47,23 @@ func makeNode(vM map[string]interface{}, name string, parent *fsNode) *fsNode {
 		r.url = vM["Download_Url"].(string) // only for files
 		r.mime = vM["Mime"].(string)
 	}
-	r.name = name
+	r.name = vM["Name"].(string)
 	r.LastModified = parseTime(vM["Last_Modified"])
-	r.parent = parent
-	r.driveId = parent.driveId
-	r.fs = parent.fs
 
 	// size is returned as string
 	size, _ := strconv.ParseInt(vM["Size"].(string), 0, 64)
 	r.size = size
+}
+
+func makeNode(vM map[string]interface{}, name string, parent *fsNode) *fsNode {
+	r := &fsNode{}
+	r.store(vM)
+
+	// set values
+	r.name = name
+	r.parent = parent
+	r.driveId = parent.driveId
+	r.fs = parent.fs
 
 	return r
 }
@@ -301,11 +307,11 @@ func (n *fsNode) OpenFile(ctx context.Context, name string, flag int, perm os.Fi
 
 		if flag&os.O_CREATE != 0 {
 			// ok, let the user create a file
-			res, err := n.fs.c.Rest("Drive/Item/"+url.PathEscape(n.Id)+":upload", "POST", oauth2.RestParam{"filename": name})
+			res, err := oauth2.NewUpload(n.fs.c, "Drive/Item/"+url.PathEscape(n.Id)+":upload", oauth2.RestParam{"filename": name})
 			if err != nil {
 				return nil, err
 			}
-			return &fsNodeFile{parent: n, upload: res.Data.(map[string]interface{}), flag: flag, perm: perm}, nil
+			return &fsNodeFile{parent: n, upload: res, flag: flag, perm: perm}, nil
 		}
 		return nil, err
 	}
@@ -327,12 +333,8 @@ func (n *fsNode) OpenFile(ctx context.Context, name string, flag int, perm os.Fi
 	}
 }
 
-func (n *fsNode) overwrite() (map[string]interface{}, error) {
-	res, err := n.fs.c.Rest("Drive/Item/"+url.PathEscape(n.Id)+":overwrite", "POST", oauth2.RestParam{})
-	if err != nil {
-		return nil, err
-	}
-	return res.Data.(map[string]interface{}), nil
+func (n *fsNode) overwrite() (*oauth2.Upload, error) {
+	return oauth2.NewUpload(n.fs.c, "Drive/Item/"+url.PathEscape(n.Id)+":overwrite", nil)
 
 }
 

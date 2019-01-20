@@ -231,6 +231,11 @@ func (o *OAuth2) Rest(req, method string, param RestParam) (*RestResponse, error
 
 	r.Header.Set("Sec-Rest-Http", "false")
 
+	if param == nil {
+		// create empty object
+		param = RestParam{}
+	}
+
 	// add parameters (depending on method)
 	switch method {
 	case "GET", "HEAD", "OPTIONS":

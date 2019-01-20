@@ -26,6 +26,9 @@ const (
 
 func NewHttpServer() (*HttpServer, error) {
 	l, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 50500})
+	if err != nil {
+		return nil, err
+	}
 	res := &HttpServer{l: l}
 	o, err := oauth2.FromDisk(clientId, tokenEP)
 	if err != nil {

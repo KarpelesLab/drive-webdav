@@ -36,6 +36,8 @@ func main() {
 	h, err := NewHttpServer()
 	if err != nil {
 		log.Printf("main: failed to create http server: %s", err)
+		logbuf.Close()
+		return
 	}
 
 	log.Printf("main: listening on %s", h)
