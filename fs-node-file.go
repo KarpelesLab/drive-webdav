@@ -37,6 +37,20 @@ func (f *fsNodeFile) Close() error {
 func (f *fsNodeFile) finalizeUpload() error {
 	if f.buf.Len() > 0 {
 		if f.committed == 0 {
+			if f.upload == nil {
+				up, err := f.self.overwrite()
+				if err != nil {
+					return err
+				}
+				f.upload = up
+			}
+			var fs *DriveFS
+			if f.self == nil {
+				fs = f.parent.fs
+			} else {
+				fs = f.self.fs
+			}
+
 			// can just complete this in a single PUT
 			req, err := http.NewRequest("PUT", f.upload["PUT"].(string), bytes.NewReader(f.buf.Bytes()))
 			if err != nil {
@@ -48,13 +62,16 @@ func (f *fsNodeFile) finalizeUpload() error {
 				return err
 			}
 			resp.Body.Close()
-			f.buf.Reset()
 
 			// notify upload completion
-			final, err := f.parent.fs.c.Rest(f.upload["Complete"].(string), "POST", oauth2.RestParam{})
+			final, err := fs.c.Rest(f.upload["Complete"].(string), "POST", oauth2.RestParam{})
 			if err != nil {
 				return err
 			}
+
+			// complete
+			f.buf.Reset()
+			f.upload = nil
 
 			// add child if new upload
 			if f.self == nil {

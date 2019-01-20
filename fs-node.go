@@ -318,3 +318,12 @@ func (n *fsNode) OpenFile(ctx context.Context, name string, flag int, perm os.Fi
 		return nil, os.ErrInvalid
 	}
 }
+
+func (n *fsNode) overwrite() (map[string]interface{}, error) {
+	res, err := n.fs.c.Rest("Drive/Item/"+url.PathEscape(n.Id)+":overwrite", "POST", oauth2.RestParam{})
+	if err != nil {
+		return nil, err
+	}
+	return res.Data.(map[string]interface{}), nil
+
+}
