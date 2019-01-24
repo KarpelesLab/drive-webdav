@@ -81,7 +81,7 @@ func (n *fsNode) reloadData() {
 	n.refreshL.Lock()
 	defer n.refreshL.Unlock()
 
-	if time.Until(n.refresh) < 5*time.Second {
+	if time.Since(n.refresh) < 5*time.Second {
 		// do not perform reload if did reload less than 5s ago
 		return
 	}
