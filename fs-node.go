@@ -37,6 +37,8 @@ type fsNode struct {
 	driveId  string
 	parent   *fsNode
 	isRoot   bool
+	refresh  time.Time
+	refreshL sync.Mutex
 }
 
 func (r *fsNode) store(vM map[string]interface{}) {
@@ -73,6 +75,20 @@ func (n *fsNode) load() {
 	n.loadOnce.Do(n.loadInternal)
 }
 
+func (n *fsNode) reloadData() {
+	n.load() // just in case
+
+	n.refreshL.Lock()
+	defer n.refreshL.Unlock()
+
+	if time.Until(n.refresh) < 5*time.Second {
+		// do not perform reload if did reload less than 5s ago
+		return
+	}
+
+	n.loadInternal()
+}
+
 func (n *fsNode) addChild(infoMap map[string]interface{}, oname string) *fsNode {
 	if oname == "" {
 		oname = infoMap["Name"].(string)
@@ -100,6 +116,8 @@ func (n *fsNode) loadInternal() {
 		n.initRoot()
 		return
 	}
+
+	n.refresh = time.Now()
 
 	switch n.Type {
 	case "folder":
@@ -319,6 +337,7 @@ func (n *fsNode) OpenFile(ctx context.Context, name string, flag int, perm os.Fi
 	switch n.Type {
 	case "folder":
 		log.Printf("return iterator")
+		n.reloadData()
 		c := make([]os.FileInfo, len(n.children))
 		pos := 0
 		for _, sub := range n.children {
